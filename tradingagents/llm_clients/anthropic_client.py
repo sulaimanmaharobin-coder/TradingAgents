@@ -23,6 +23,13 @@ _EFFORT_EXACT = {
 _EFFORT_MODEL = re.compile(r"^claude-(opus|sonnet|fable)-(\d+)(?:-(\d+))?$")
 _EFFORT_MIN_VERSION = {"opus": (4, 5), "sonnet": (4, 6), "fable": (5, 0)}
 
+# These models reject a forced ``tool_choice``, so langchain's default
+# ``function_calling`` structured output only asks for the tool call; on long
+# prompts the model answers in prose, the parser returns None and every
+# structured agent drops to free text. Claude's native JSON-schema output is
+# enforced server-side instead. Same prefixes langchain-anthropic 1.7.6 uses.
+_NO_FORCED_TOOL_CHOICE = ("claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5")
+
 
 def _supports_effort(model: str) -> bool:
     """Whether Anthropic accepts the ``effort`` parameter for this model."""
@@ -48,6 +55,11 @@ class NormalizedChatAnthropic(ChatAnthropic):
 
     def invoke(self, input, config=None, **kwargs):
         return normalize_content(super().invoke(input, config, **kwargs))
+
+    def with_structured_output(self, schema, *, method=None, **kwargs):
+        if method is None:
+            method = "json_schema" if self.model.lower().startswith(_NO_FORCED_TOOL_CHOICE) else "function_calling"
+        return super().with_structured_output(schema, method=method, **kwargs)
 
 
 class AnthropicClient(BaseLLMClient):
