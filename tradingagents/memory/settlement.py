@@ -5,7 +5,10 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from tradingagents.dataflows.symbols import normalize_symbol
+import pandas as pd
+
+from tradingagents.dataflows.symbols import crypto_base, normalize_symbol
+from tradingagents.dataflows.vendors import cryptocom
 from tradingagents.dataflows.vendors.yahoo.market import get_closes
 
 logger = logging.getLogger(__name__)
@@ -49,6 +52,26 @@ def _by_day(closes):
     return closes
 
 
+def _closes(symbol: str, start_date: str, end_date: str) -> pd.Series:
+    """Daily closes from ``start_date`` up to, not including, ``end_date``.
+
+    Yahoo first. A coin Yahoo has nothing for is priced from Crypto.com, the
+    venue its analysis read: Yahoo spells many coins with an id suffix
+    (``UNI7083-USD``) and has no ``UNI-USD``.
+    """
+    try:
+        closes = get_closes(symbol, start_date, end_date)
+    except Exception:
+        if not crypto_base(symbol):
+            raise
+        closes = pd.Series(dtype=float)
+    if len(closes) or not crypto_base(symbol):
+        return closes
+    data, _ = cryptocom.load_daily(symbol, end_date)
+    closes = data.set_index("Date")["Close"]
+    return closes[(closes.index >= pd.Timestamp(start_date)) & (closes.index < pd.Timestamp(end_date))]
+
+
 def fetch_returns(
     ticker: str, trade_date: str, holding_days: int = 5,
     benchmark: str = "SPY",
@@ -74,7 +97,7 @@ def fetch_returns(
 
     # Closes for the instrument the analysis priced (XAUUSD -> GC=F, #984),
     # from the first session after the decision date.
-    stock = _by_day(get_closes(ticker, trade_date, end_str))
+    stock = _by_day(_closes(ticker, trade_date, end_str))
     stock = stock[stock.index > start]
     # From a week earlier, so the benchmark has a close on or before entry.
     bench_start = (start - timedelta(days=7)).strftime("%Y-%m-%d")
