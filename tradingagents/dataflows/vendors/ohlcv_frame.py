@@ -53,7 +53,7 @@ def indicator_window(data, symbol, canonical, indicator, as_of_date, look_back_d
     df[indicator]  # stockstats computes the column on first access
     values = {
         d.strftime("%Y-%m-%d"): ("N/A" if pd.isna(v) else str(v))
-        for d, v in zip(frame["Date"], df[indicator])
+        for d, v in zip(frame["Date"], df[indicator], strict=True)
     }
 
     lines, day = [], as_of_dt

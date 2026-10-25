@@ -46,32 +46,38 @@ class FmpSymbolTests(unittest.TestCase):
 
 class FmpVendorTests(unittest.TestCase):
     def test_missing_key_is_not_configured(self):
-        with mock.patch.dict("os.environ", {"FMP_API_KEY": ""}):
-            with self.assertRaises(VendorNotConfiguredError):
-                fmp.get_stock_data("AAPL", "2026-10-01", "2026-10-23")
+        with mock.patch.dict("os.environ", {"FMP_API_KEY": ""}), self.assertRaises(VendorNotConfiguredError):
+            fmp.get_stock_data("AAPL", "2026-10-01", "2026-10-23")
 
     def test_plan_gated_symbol_is_no_data_not_a_crash(self):
         body = {"Error Message": "Premium Query Parameter: requires a higher plan."}
-        with mock.patch.dict("os.environ", {"FMP_API_KEY": "k"}), \
-             mock.patch("tradingagents.dataflows.vendors.fmp.get_scrubbed", return_value=_resp(402, body)):
-            with self.assertRaises(NoMarketDataError) as ctx:
-                fmp.get_stock_data("^STI", "2026-10-01", "2026-10-23")
+        with (
+            mock.patch.dict("os.environ", {"FMP_API_KEY": "k"}),
+            mock.patch("tradingagents.dataflows.vendors.fmp.get_scrubbed", return_value=_resp(402, body)),
+            self.assertRaises(NoMarketDataError) as ctx,
+        ):
+            fmp.get_stock_data("^STI", "2026-10-01", "2026-10-23")
         self.assertIn("higher plan", str(ctx.exception))
 
     def test_plan_gated_plain_text_body_is_no_data(self):
         # What FMP really sends for a symbol outside the plan: 402, labelled JSON, plain text.
         r = mock.Mock(status_code=402, content=b"x", text="Premium Query Parameter: not available under your current subscription")
         r.json.side_effect = ValueError("Expecting value")
-        with mock.patch.dict("os.environ", {"FMP_API_KEY": "k"}),              mock.patch("tradingagents.dataflows.vendors.fmp.get_scrubbed", return_value=r):
-            with self.assertRaises(NoMarketDataError) as ctx:
-                fmp.get_stock_data("^STI", "2026-10-01", "2026-10-23")
+        with (
+            mock.patch.dict("os.environ", {"FMP_API_KEY": "k"}),
+            mock.patch("tradingagents.dataflows.vendors.fmp.get_scrubbed", return_value=r),
+            self.assertRaises(NoMarketDataError) as ctx,
+        ):
+            fmp.get_stock_data("^STI", "2026-10-01", "2026-10-23")
         self.assertIn("current subscription", str(ctx.exception))
 
     def test_rate_limit_is_unavailable(self):
-        with mock.patch.dict("os.environ", {"FMP_API_KEY": "k"}), \
-             mock.patch("tradingagents.dataflows.vendors.fmp.get_scrubbed", return_value=_resp(429, {})):
-            with self.assertRaises(VendorUnavailableError):
-                fmp.get_stock_data("AAPL", "2026-10-01", "2026-10-23")
+        with (
+            mock.patch.dict("os.environ", {"FMP_API_KEY": "k"}),
+            mock.patch("tradingagents.dataflows.vendors.fmp.get_scrubbed", return_value=_resp(429, {})),
+            self.assertRaises(VendorUnavailableError),
+        ):
+            fmp.get_stock_data("AAPL", "2026-10-01", "2026-10-23")
 
     def test_rows_come_back_oldest_first_within_range(self):
         with mock.patch.dict("os.environ", {"FMP_API_KEY": "k"}), \
@@ -80,7 +86,7 @@ class FmpVendorTests(unittest.TestCase):
         lines = out.strip().splitlines()
         self.assertIn("source: Financial Modeling Prep", lines[0])
         self.assertEqual(lines[3], "Date,Open,High,Low,Close,Volume")
-        self.assertEqual([l.split(",")[0] for l in lines[4:]],["2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23"])
+        self.assertEqual([line.split(",")[0] for line in lines[4:]], ["2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23"])
 
     def test_indicator_ignores_bars_after_the_analysis_date(self):
         with mock.patch.dict("os.environ", {"FMP_API_KEY": "k"}), \
